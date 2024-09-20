@@ -11,9 +11,8 @@
 #include "Mesh/RealtimeMeshBlueprintMeshBuilder.h"
 #include "DeformableMeshComponent.generated.h"
 
-/**
- * 
- */
+class UCollisionNodeComponent;
+
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class DEFORMATION_API UDeformableMeshComponent : public URealtimeMeshComponent
 {
@@ -23,14 +22,26 @@ private:
 	URealtimeMeshComponent* RealtimeMeshComponent;
 	URealtimeMeshSimple* RealtimeMesh;
 
+
 protected:
 	virtual void BeginPlay() override;
 
 	UFUNCTION(BlueprintCallable)
-	void BuildMesh();
+	void InitMesh();
 	void OnComplete();
 
 	UDeformableMeshComponent();
+
+	void SpawnCollisionNode(FVector location);
+	void SpawnCollisionNodesOnMesh();
+	void SpreadVerticesByNodes();
+	TArray<UCollisionNodeComponent*> CollisionNodes;
+
+	TArray<FVector> Vertices;
+	TArray<int32> Triangles;
+	TArray<FVector> Normals;
+	TArray<FVector2D> UVs;
+	TArray<FProcMeshTangent> Tangents;
 	
 public: 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Mesh")
@@ -38,10 +49,4 @@ public:
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Mesh")
 	UMaterial* MaterialAsset;
-
-	TArray<FVector> Vertices;
-	TArray<int32> Triangles;
-	TArray<FVector> Normals;
-	TArray<FVector2D> UVs;
-	TArray<FProcMeshTangent> Tangents;
 };

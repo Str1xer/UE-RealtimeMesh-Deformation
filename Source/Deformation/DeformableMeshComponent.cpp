@@ -1,4 +1,5 @@
 #include "DeformableMeshComponent.h"
+#include "CollisionNodeComponent.h"
 
 UDeformableMeshComponent::UDeformableMeshComponent() {
 	RealtimeMeshComponent = CreateDefaultSubobject<URealtimeMeshComponent>(TEXT("Mesh"));
@@ -8,14 +9,15 @@ void UDeformableMeshComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	
 	RealtimeMeshComponent->AttachToComponent(this, FAttachmentTransformRules::KeepWorldTransform);
 	RealtimeMeshComponent->SetRelativeLocation(FVector(0.f, 0.f, 0.f));
 
-	BuildMesh();
+	InitMesh();
+	SpawnCollisionNodesOnMesh();
+	SpreadVerticesByNodes();
 }
 
-void UDeformableMeshComponent::BuildMesh() {
+void UDeformableMeshComponent::InitMesh() {
 	// Read static mesh information. Required enabled CPU Only setting in mesh.
 	UKismetProceduralMeshLibrary::GetSectionFromStaticMesh(StaticMesh, 0, 0, Vertices, Triangles, Normals, UVs, Tangents);
 
@@ -46,4 +48,33 @@ void UDeformableMeshComponent::BuildMesh() {
 	FRealtimeMeshSectionGroupKey GroupKey = URealtimeMeshBlueprintFunctionLibrary::MakeSectionGroupKeyUnique(LODKey);
 
 	RealtimeMesh->CreateSectionGroup(GroupKey, StreamSet, Delegate);
+}
+
+void UDeformableMeshComponent::SpawnCollisionNode(FVector Location) {
+	UCollisionNodeComponent* CreatedCollisionNode = NewObject<UCollisionNodeComponent>(this, TEXT("Collision Node " + CollisionNodes.Num()));
+	CreatedCollisionNode->AttachToComponent(GetOwner()->GetDefaultAttachComponent(), FAttachmentTransformRules::KeepWorldTransform);
+	CreatedCollisionNode->RegisterComponent();
+	CreatedCollisionNode->SetRelativeLocation(Location);
+	CreatedCollisionNode->Location = Location;
+	CollisionNodes.Push(CreatedCollisionNode);
+}
+
+void UDeformableMeshComponent::SpawnCollisionNodesOnMesh() {
+	CollisionNodes = TArray<UCollisionNodeComponent*>();
+	FVector ComponentLocation = this->GetRelativeLocation();
+	TSet<FVector> SetOfVertices = TSet<FVector>(Vertices);
+	for (FVector& Element : SetOfVertices) {
+		SpawnCollisionNode(ComponentLocation + Element);
+	}
+}
+
+void UDeformableMeshComponent::SpreadVerticesByNodes() {
+	for (UCollisionNodeComponent* CollisionNode : CollisionNodes) {
+		for (int VertexId = 0; VertexId < Vertices.Num(); VertexId++) {
+			if ((CollisionNode->Location - Vertices[VertexId]).SizeSquared() < 1.0f) {
+				CollisionNode->Vertices->Push(VertexId);
+				GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, FString::Printf(TEXT("%d"), CollisionNode->Vertices->Num()));
+			}
+		}
+	}
 }
