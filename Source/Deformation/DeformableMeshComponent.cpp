@@ -9,17 +9,25 @@ UDeformableMeshComponent::UDeformableMeshComponent() {
 	PrimaryComponentTick.bCanEverTick = true;
 	RegisterAllComponentTickFunctions(true);
 	SetComponentTickEnabled(true);
+
+	this->bHiddenInGame = false;
+	this->SetCollisionProfileName(TEXT("BlockAll"));
+	this->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 }
 
 void UDeformableMeshComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
+	this->SetSphereRadius(10.f);
+
 	RealtimeMeshComponent->AttachToComponent(this, FAttachmentTransformRules::KeepWorldTransform);
 	RealtimeMeshComponent->SetRelativeLocation(FVector(0.f, 0.f, 0.f));
 
 	PreviousComponentLocation = RealtimeMeshComponent->GetComponentLocation();
-		
+
+	this->SetSimulatePhysics(true);
+
 	InitMesh();
 	SpawnCollisionNodesOnMesh();
 	SpreadVerticesByNodes();
@@ -51,7 +59,7 @@ void UDeformableMeshComponent::InitMesh() {
 
 	for (int i = 0; i < VerticesCount; i++) {
 		Builder.AddVertex(FVector3f(Vertices[i].X, Vertices[i].Y, Vertices[i].Z))
-			.SetNormalAndTangent(FVector3f(Tangents[i].TangentX.X, Tangents[i].TangentX.Y, Tangents[i].TangentX.Z), FVector3f(Normals[i].X, Normals[i].Y, Normals[i].Z))
+			.SetNormalAndTangent(FVector3f(Normals[i].X, Normals[i].Y, Normals[i].Z), FVector3f(Tangents[i].TangentX.X, Tangents[i].TangentX.Y, Tangents[i].TangentX.Z))
 			.SetColor(FColor::White)
 			.SetTexCoord(FVector2f(UVs[i].X, UVs[i].Y));
 	}
@@ -67,8 +75,8 @@ void UDeformableMeshComponent::InitMesh() {
 }
 
 void UDeformableMeshComponent::SpawnCollisionNode(FVector Location) {
-	UCollisionNodeComponent* CreatedCollisionNode = NewObject<UCollisionNodeComponent>(this, TEXT("Collision Node " + CollisionNodes.Num()));
-	CreatedCollisionNode->AttachToComponent(GetOwner()->GetDefaultAttachComponent(), FAttachmentTransformRules::KeepWorldTransform);
+	UCollisionNodeComponent* CreatedCollisionNode = NewObject<UCollisionNodeComponent>(RealtimeMesh, TEXT("Collision Node " + CollisionNodes.Num()));
+	CreatedCollisionNode->AttachToComponent(this, FAttachmentTransformRules::KeepWorldTransform);
 	CreatedCollisionNode->RegisterComponent();
 	CreatedCollisionNode->SetRelativeLocation(Location);
 	CreatedCollisionNode->Location = Location;
@@ -82,7 +90,7 @@ void UDeformableMeshComponent::SpawnCollisionNodesOnMesh() {
 	FVector ComponentLocation = this->GetRelativeLocation();
 	TSet<FVector> SetOfVertices = TSet<FVector>(Vertices);
 	for (FVector& Element : SetOfVertices) {
-		SpawnCollisionNode(ComponentLocation + Element);
+		SpawnCollisionNode(Element);
 	}
 }
 

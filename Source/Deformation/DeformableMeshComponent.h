@@ -8,13 +8,14 @@
 #include "ProceduralMeshComponent.h"
 #include "RealtimeMeshLibrary.h"
 #include "RealtimeMeshSimple.h"
+#include "Components/SphereComponent.h"
 #include "Mesh/RealtimeMeshBlueprintMeshBuilder.h"
 #include "DeformableMeshComponent.generated.h"
 
 class UCollisionNodeComponent;
 
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
-class DEFORMATION_API UDeformableMeshComponent : public URealtimeMeshComponent
+class DEFORMATION_API UDeformableMeshComponent : public USphereComponent
 {
 	GENERATED_BODY()
 
