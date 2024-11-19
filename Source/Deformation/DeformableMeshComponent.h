@@ -35,7 +35,6 @@ protected:
 	void SpawnCollisionNode(FVector location);
 	void SpawnCollisionNodesOnMesh();
 	void SpreadVerticesByNodes();
-	void FollowNodeForRoot();
 	
 	int CollisionNodesCount = 0;
 	TArray<UCollisionNodeComponent*> CollisionNodes;

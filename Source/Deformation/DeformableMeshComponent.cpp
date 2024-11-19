@@ -28,8 +28,6 @@ void UDeformableMeshComponent::BeginPlay()
 void UDeformableMeshComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
-	FollowNodeForRoot();
 }
 
 void UDeformableMeshComponent::InitMesh() {
@@ -74,7 +72,7 @@ void UDeformableMeshComponent::SpawnCollisionNode(FVector Location) {
 	CreatedCollisionNode->RegisterComponent();
 	CreatedCollisionNode->SetRelativeLocation(Location);
 	CreatedCollisionNode->Location = Location;
-	CreatedCollisionNode->SetSimulatePhysics(true);
+	//CreatedCollisionNode->SetSimulatePhysics(true);
 	CollisionNodesCount++;
 	CollisionNodes.Push(CreatedCollisionNode);
 }
@@ -97,13 +95,4 @@ void UDeformableMeshComponent::SpreadVerticesByNodes() {
 			}
 		}
 	}
-}
-
-void UDeformableMeshComponent::FollowNodeForRoot() {
-	FVector FrameLocationDifference = RealtimeMeshComponent->GetComponentLocation() - PreviousComponentLocation;
-	for (int NodeIdx = 0; NodeIdx < CollisionNodesCount; NodeIdx++) {
-		CollisionNodes[NodeIdx]->SetPhysicsLinearVelocity(FVector(0, 0, 0));
-		CollisionNodes[NodeIdx]->SetWorldLocation(CollisionNodes[NodeIdx]->GetComponentLocation() + FrameLocationDifference);
-	}
-	PreviousComponentLocation = RealtimeMeshComponent->GetComponentLocation();
 }
