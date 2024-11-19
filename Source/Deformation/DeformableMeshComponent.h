@@ -25,16 +25,19 @@ private:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 	UFUNCTION(BlueprintCallable)
 	void InitMesh();
-	void OnComplete();
-
+	
 	UDeformableMeshComponent();
 
 	void SpawnCollisionNode(FVector location);
 	void SpawnCollisionNodesOnMesh();
 	void SpreadVerticesByNodes();
+	void FollowNodeForRoot();
+	
+	int CollisionNodesCount = 0;
 	TArray<UCollisionNodeComponent*> CollisionNodes;
 
 	TArray<FVector> Vertices;
@@ -42,6 +45,8 @@ protected:
 	TArray<FVector> Normals;
 	TArray<FVector2D> UVs;
 	TArray<FProcMeshTangent> Tangents;
+
+	FVector PreviousComponentLocation;
 	
 public: 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Mesh")
