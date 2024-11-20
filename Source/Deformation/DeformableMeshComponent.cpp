@@ -69,13 +69,36 @@ void UDeformableMeshComponent::InitMesh() {
 	}
 
 	FRealtimeMeshLODKey LODKey = FRealtimeMeshLODKey(0);
-	FRealtimeMeshSectionGroupKey GroupKey = URealtimeMeshBlueprintFunctionLibrary::MakeSectionGroupKeyUnique(LODKey);
+	GroupKey = URealtimeMeshBlueprintFunctionLibrary::MakeSectionGroupKeyUnique(LODKey);
 
 	RealtimeMesh->CreateSectionGroup(GroupKey, StreamSet);
 }
 
+void UDeformableMeshComponent::UpdateMesh() {
+	RealtimeMesh->EditMeshInPlace(GroupKey, [this](FRealtimeMeshStreamSet& StreamSet)
+		{
+			TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1> Builder(StreamSet);
+
+			for (int NodeIdx = 0; NodeIdx < CollisionNodes.Num(); NodeIdx++) {
+				auto NodeVertices = *CollisionNodes[NodeIdx]->Vertices;
+				auto NodePosition = CollisionNodes[NodeIdx]->Location;
+
+				for (int VertexIdx = 0; VertexIdx < CollisionNodes[NodeIdx]->Vertices->Num(); VertexIdx++) {
+					Builder.EditVertex(NodeVertices[VertexIdx]).SetPosition(FVector3f(NodePosition.X, NodePosition.Y, NodePosition.Z));
+				}
+			}
+
+			TSet<FRealtimeMeshStreamKey> Res;
+			Res.Add(FRealtimeMeshStreams::Position);
+			
+			return Res;
+		}
+	);
+}
+
 void UDeformableMeshComponent::SpawnCollisionNode(FVector Location) {
 	UCollisionNodeComponent* CreatedCollisionNode = NewObject<UCollisionNodeComponent>(RealtimeMesh, TEXT("Collision Node " + CollisionNodes.Num()));
+	CreatedCollisionNode->DeformableMesh = this;
 	CreatedCollisionNode->AttachToComponent(this, FAttachmentTransformRules::KeepWorldTransform);
 	CreatedCollisionNode->RegisterComponent();
 	CreatedCollisionNode->SetRelativeLocation(Location);
@@ -97,10 +120,29 @@ void UDeformableMeshComponent::SpawnCollisionNodesOnMesh() {
 void UDeformableMeshComponent::SpreadVerticesByNodes() {
 	for (UCollisionNodeComponent* CollisionNode : CollisionNodes) {
 		for (int VertexId = 0; VertexId < Vertices.Num(); VertexId++) {
-			if ((CollisionNode->Location - Vertices[VertexId]).SizeSquared() < 1.0f) {
+			if ((CollisionNode->Location - Vertices[VertexId]).SizeSquared() < 0.1f) {
 				CollisionNode->Vertices->Push(VertexId);
 				//GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, FString::Printf(TEXT("%d"), CollisionNode->Vertices->Num()));
 			}
 		}
 	}
+}
+
+void UDeformableMeshComponent::MoveNodes(FVector NormalImpulse, const FHitResult& Hit) {
+	float SharedMass = 0.0f;
+	auto EngineWorld = GetWorld();
+	
+	AActor* SelfActor = this->GetOwner()->GetRootComponent()->GetOwner();
+
+	for (UCollisionNodeComponent* CollisionNode : CollisionNodes) {
+		FHitResult TraceHit = CollisionNode->LineTrace(EngineWorld, SelfActor, CollisionNode->GetComponentLocation() + Hit.ImpactNormal * -10, CollisionNode->GetComponentLocation() + Hit.ImpactNormal * -20);
+		if (TraceHit.bBlockingHit) {
+			FVector Impulse = NormalImpulse / 100 * 0.01 * ((10 - Hit.Distance) / 10);
+			if (Impulse.Length() < 10) continue;
+			CollisionNode->AddWorldOffset(Impulse);
+			CollisionNode->Location += Impulse;
+		}
+	}
+
+	UpdateMesh();
 }

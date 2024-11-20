@@ -46,6 +46,8 @@ protected:
 	TArray<FVector2D> UVs;
 	TArray<FProcMeshTangent> Tangents;
 
+	FRealtimeMeshSectionGroupKey GroupKey;
+
 	FVector PreviousComponentLocation;
 	
 public: 
@@ -54,4 +56,10 @@ public:
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Mesh")
 	UMaterial* MaterialAsset;
+
+	UFUNCTION(BlueprintCallable)
+	void UpdateMesh();
+
+	UFUNCTION(BlueprintCallable)
+	void MoveNodes(FVector NormalImpulse, const FHitResult& Hit);
 };
