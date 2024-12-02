@@ -23,14 +23,13 @@ void UDeformableMeshComponent::BeginPlay()
 
 	RealtimeMeshComponent->AttachToComponent(this, FAttachmentTransformRules::KeepWorldTransform);
 	RealtimeMeshComponent->SetRelativeLocation(FVector(0.f, 0.f, 0.f));
+	RealtimeMeshComponent->SetRelativeRotation(FQuat(0, 0, 0, 0));
 
 	PreviousComponentLocation = RealtimeMeshComponent->GetComponentLocation();
 
-	this->SetSimulatePhysics(true);
-
 	InitMesh();
-	SpawnCollisionNodesOnMesh();
-	SpreadVerticesByNodes();
+	SpawnCollisionNodes();
+	ComputeWeights();
 }
 
 void UDeformableMeshComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -74,18 +73,35 @@ void UDeformableMeshComponent::InitMesh() {
 	RealtimeMesh->CreateSectionGroup(GroupKey, StreamSet);
 }
 
-void UDeformableMeshComponent::UpdateMesh() {
-	RealtimeMesh->EditMeshInPlace(GroupKey, [this](FRealtimeMeshStreamSet& StreamSet)
+void UDeformableMeshComponent::UpdateMesh()
+{	
+	TArray<FVector> NewVertices;
+	NewVertices.SetNum(Vertices.Num());
+
+	FCriticalSection Mutex;
+	ParallelFor(Vertices.Num(), [&](int32 VertexIdx)
+		{
+			FVector NewLocation = FVector(0, 0, 0);
+
+			for (int32 NodeIdx = 0; NodeIdx < CollisionNodes.Num(); NodeIdx++) {
+				auto NodePosition = CollisionNodes[NodeIdx]->GetRelativeLocation();
+
+				NewLocation += DeformationTransferWeights[VertexIdx][NodeIdx] * NodePosition;
+			}
+
+			Mutex.Lock();
+			NewVertices[VertexIdx] = NewLocation;
+			Mutex.Unlock();
+		}
+	);
+
+	RealtimeMesh->EditMeshInPlace(GroupKey, [this, &NewVertices](FRealtimeMeshStreamSet& StreamSet)
 		{
 			TRealtimeMeshBuilderLocal<uint16, FPackedNormal, FVector2DHalf, 1> Builder(StreamSet);
 
-			for (int NodeIdx = 0; NodeIdx < CollisionNodes.Num(); NodeIdx++) {
-				auto NodeVertices = *CollisionNodes[NodeIdx]->Vertices;
-				auto NodePosition = CollisionNodes[NodeIdx]->Location;
-
-				for (int VertexIdx = 0; VertexIdx < CollisionNodes[NodeIdx]->Vertices->Num(); VertexIdx++) {
-					Builder.EditVertex(NodeVertices[VertexIdx]).SetPosition(FVector3f(NodePosition.X, NodePosition.Y, NodePosition.Z));
-				}
+			for (int32 VertexIdx = 0; VertexIdx < Vertices.Num(); VertexIdx++)
+			{				
+				Builder.EditVertex(VertexIdx).SetPosition(FVector3f(NewVertices[VertexIdx].X, NewVertices[VertexIdx].Y, NewVertices[VertexIdx].Z));
 			}
 
 			TSet<FRealtimeMeshStreamKey> Res;
@@ -97,34 +113,40 @@ void UDeformableMeshComponent::UpdateMesh() {
 }
 
 void UDeformableMeshComponent::SpawnCollisionNode(FVector Location) {
-	UCollisionNodeComponent* CreatedCollisionNode = NewObject<UCollisionNodeComponent>(RealtimeMesh, TEXT("Collision Node " + CollisionNodes.Num()));
+	UCollisionNodeComponent* CreatedCollisionNode = NewObject<UCollisionNodeComponent>(this);
+	if (!CreatedCollisionNode) {
+		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("New object wasn't created!")));
+	}
 	CreatedCollisionNode->DeformableMesh = this;
-	CreatedCollisionNode->AttachToComponent(this, FAttachmentTransformRules::KeepWorldTransform);
+	bool bResult = CreatedCollisionNode->AttachToComponent(this, FAttachmentTransformRules::KeepWorldTransform);
 	CreatedCollisionNode->RegisterComponent();
+	CreatedCollisionNode->SetSphereRadius(CageNodeRadius);
 	CreatedCollisionNode->SetRelativeLocation(Location);
 	CreatedCollisionNode->Location = Location;
 	//CreatedCollisionNode->SetSimulatePhysics(true);
+	CreatedCollisionNode->SetHiddenInGame(!bIsDebug);
 	CollisionNodesCount++;
 	CollisionNodes.Push(CreatedCollisionNode);
 }
 
-void UDeformableMeshComponent::SpawnCollisionNodesOnMesh() {
-	CollisionNodes = TArray<UCollisionNodeComponent*>();
-	FVector ComponentLocation = this->GetRelativeLocation();
-	TSet<FVector> SetOfVertices = TSet<FVector>(Vertices);
-	for (FVector& Element : SetOfVertices) {
-		SpawnCollisionNode(Element);
-	}
-}
+void UDeformableMeshComponent::SpawnCollisionNodes() {
+	TArray<FVector> CageMeshVertices;
+	TArray<int32> CageMeshTriangles;
+	TArray<FVector> CageMeshNormals;
+	TArray<FVector2D> CageMeshUVs;
+	TArray<FProcMeshTangent> CageMeshTangents;
+	UKismetProceduralMeshLibrary::GetSectionFromStaticMesh(CageMesh, 0, 0, CageMeshVertices, CageMeshTriangles, CageMeshNormals, CageMeshUVs, CageMeshTangents);
 
-void UDeformableMeshComponent::SpreadVerticesByNodes() {
-	for (UCollisionNodeComponent* CollisionNode : CollisionNodes) {
-		for (int VertexId = 0; VertexId < Vertices.Num(); VertexId++) {
-			if ((CollisionNode->Location - Vertices[VertexId]).SizeSquared() < 0.1f) {
-				CollisionNode->Vertices->Push(VertexId);
-				//GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, FString::Printf(TEXT("%d"), CollisionNode->Vertices->Num()));
-			}
-		}
+	for (FVector VertexLocation : CageMeshVertices) {
+		CageVertices.AddUnique(VertexLocation);
+	}
+
+	for (FVector Location : CageVertices) {
+		SpawnCollisionNode(Location);
+	}
+
+	for (int32 Index : CageMeshTriangles) {
+		CageTriangles.Add(CageVertices.Find(CageMeshVertices[Index]));
 	}
 }
 
@@ -135,14 +157,117 @@ void UDeformableMeshComponent::MoveNodes(FVector NormalImpulse, const FHitResult
 	AActor* SelfActor = this->GetOwner()->GetRootComponent()->GetOwner();
 
 	for (UCollisionNodeComponent* CollisionNode : CollisionNodes) {
-		FHitResult TraceHit = CollisionNode->LineTrace(EngineWorld, SelfActor, CollisionNode->GetComponentLocation() + Hit.ImpactNormal * -10, CollisionNode->GetComponentLocation() + Hit.ImpactNormal * -20);
-		if (TraceHit.bBlockingHit) {
+		FHitResult TraceHit = CollisionNode->LineTrace(EngineWorld, SelfActor, CollisionNode->GetComponentLocation() + Hit.ImpactNormal * -10, CollisionNode->GetComponentLocation() + Hit.ImpactNormal * -20, bIsDebug);
+		if (TraceHit.bBlockingHit && Hit.GetComponent() == TraceHit.GetComponent()) {
 			FVector Impulse = NormalImpulse / 100 * 0.01 * ((10 - Hit.Distance) / 10);
-			if (Impulse.Length() < 10) continue;
+			if (Impulse.Length() < 1) continue;
 			CollisionNode->AddWorldOffset(Impulse);
 			CollisionNode->Location += Impulse;
 		}
 	}
 
 	UpdateMesh();
+}
+
+TArray<float> UDeformableMeshComponent::ComputeWeightsForVertex(FVector VertexLocation) {
+	TArray<float> Weights = TArray<float>();
+	Weights.SetNum(CageVertices.Num());
+
+	const int32 NumVertices = CageVertices.Num();
+	const int32 NumTriangles = CageTriangles.Num();
+
+	TArray<float> Distances;
+	TArray<FVector> Directions;
+	Distances.SetNumZeroed(NumVertices);
+	Directions.SetNum(NumVertices);
+
+	// Initialize weights to zero
+	for (int32 v = 0; v < Weights.Num(); ++v)
+	{
+		Weights[v] = 0.0f;
+	}
+
+	for (int32 v = 0; v < NumVertices; ++v)
+	{
+		FVector Delta = CageVertices[v] - VertexLocation;
+		Distances[v] = Delta.Size();
+
+		if (Distances[v] < Epsilon)
+		{
+			Weights[v] = 1.0f;
+			return Weights;
+		}
+
+		Directions[v] = (Delta / Distances[v]);
+	}
+
+	for (int32 t = 0; t < NumTriangles; t += 3)
+	{
+		TArray<int32> FaceNodes;
+		FaceNodes.Add(CageTriangles[t]);
+		FaceNodes.Add(CageTriangles[t + 1]);
+		FaceNodes.Add(CageTriangles[t + 2]);
+
+		const FVector& FaceVertex0 = CageVertices[FaceNodes[0]];
+		const FVector& FaceVertex1 = CageVertices[FaceNodes[1]];
+		const FVector& FaceVertex2 = CageVertices[FaceNodes[2]];
+
+		const float Lenght0 = FVector::Dist(Directions[FaceNodes[1]], Directions[FaceNodes[2]]);
+		const float Lenght1 = FVector::Dist(Directions[FaceNodes[0]], Directions[FaceNodes[2]]);
+		const float Lenght2 = FVector::Dist(Directions[FaceNodes[0]], Directions[FaceNodes[1]]);
+
+		const float Theta0 = 2 * FMath::Asin(Lenght0 / 2);
+		const float Theta1 = 2 * FMath::Asin(Lenght1 / 2);
+		const float Theta2 = 2 * FMath::Asin(Lenght2 / 2);
+
+		const float Half = (Theta0 + Theta1 + Theta2) / 2;
+
+		if (FMath::Abs(PI - Half) < Epsilon)
+		{
+			Weights.Init(0, CageVertices.Num());
+			Weights[FaceNodes[0]] = FMath::Sin(Theta0) * Distances[FaceNodes[1]] * Distances[FaceNodes[2]];
+			Weights[FaceNodes[1]] = FMath::Sin(Theta1) * Distances[FaceNodes[2]] * Distances[FaceNodes[0]];
+			Weights[FaceNodes[2]] = FMath::Sin(Theta2) * Distances[FaceNodes[0]] * Distances[FaceNodes[1]];
+			break;
+		}
+
+		FVector N = FVector::CrossProduct(FaceVertex1 - FaceVertex0, FaceVertex2 - FaceVertex0).GetSafeNormal();
+		float Determinant = FVector::DotProduct(FaceVertex0 - VertexLocation, N);
+
+		float c0 = (2 * FMath::Sin(Half) * FMath::Sin(Half - Theta0)) / (FMath::Sin(Theta1) * FMath::Sin(Theta2)) - 1;
+		float c1 = (2 * FMath::Sin(Half) * FMath::Sin(Half - Theta1)) / (FMath::Sin(Theta0) * FMath::Sin(Theta2)) - 1;
+		float c2 = (2 * FMath::Sin(Half) * FMath::Sin(Half - Theta2)) / (FMath::Sin(Theta0) * FMath::Sin(Theta1)) - 1;
+
+		float s0 = FMath::Sign(Determinant) * FMath::Sqrt(1 - c0 * c0);
+		float s1 = FMath::Sign(Determinant) * FMath::Sqrt(1 - c1 * c1);
+		float s2 = FMath::Sign(Determinant) * FMath::Sqrt(1 - c2 * c2);
+
+		if (FMath::Abs(s0) < Epsilon || FMath::Abs(s1) < Epsilon || FMath::Abs(s2) < Epsilon)
+			continue;
+
+		Weights[FaceNodes[0]] += (Theta0 - c1 * Theta2 - c2 * Theta1) / (Distances[FaceNodes[0]] * FMath::Sin(Theta1) * s2);
+		Weights[FaceNodes[1]] += (Theta1 - c2 * Theta0 - c0 * Theta2) / (Distances[FaceNodes[1]] * FMath::Sin(Theta2) * s0);
+		Weights[FaceNodes[2]] += (Theta2 - c0 * Theta1 - c1 * Theta0) / (Distances[FaceNodes[2]] * FMath::Sin(Theta0) * s1);
+	}
+
+	float SumWeights = 0.0f;
+	for (float Weight : Weights)
+	{
+		SumWeights += Weight;
+	}
+
+	for (float& Weight : Weights)
+	{
+		Weight /= SumWeights;
+	}
+
+	return Weights;
+}
+
+void UDeformableMeshComponent::ComputeWeights() {
+	int32 VerticesCount = Vertices.Num();
+
+	for (int32 i = 0; i < VerticesCount; ++i) {
+		DeformationTransferWeights.Add(ComputeWeightsForVertex(Vertices[i]));
+	}
 }

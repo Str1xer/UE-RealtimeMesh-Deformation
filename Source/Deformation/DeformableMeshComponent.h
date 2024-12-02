@@ -33,31 +33,52 @@ protected:
 	
 	UDeformableMeshComponent();
 
-	void SpawnCollisionNode(FVector location);
-	void SpawnCollisionNodesOnMesh();
-	void SpreadVerticesByNodes();
-	
+	void SpawnCollisionNode(FVector Location);
+	void SpawnCollisionNodes();
+	void ComputeWeights();
+	TArray<float> ComputeWeightsForVertex(FVector VertexLocation);
+
 	int CollisionNodesCount = 0;
 	TArray<UCollisionNodeComponent*> CollisionNodes;
 
+	// Mesh Data
 	TArray<FVector> Vertices;
 	TArray<int32> Triangles;
 	TArray<FVector> Normals;
 	TArray<FVector2D> UVs;
 	TArray<FProcMeshTangent> Tangents;
 
+	// Cage-Based Deformation Weights
+	TArray<TArray<float>> DeformationTransferWeights;
+
+	// Cage Data
+	TArray<FVector> CageVertices = TArray<FVector>();
+	TArray<int32> CageTriangles = TArray<int32>();
+
 	FRealtimeMeshSectionGroupKey GroupKey;
 
 	FVector PreviousComponentLocation;
 	
 public: 
+	const float Epsilon = 1e-4f;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Mesh")
+	UStaticMesh* CageMesh;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Mesh")
+	float CageNodeRadius = 10.f;
+
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Mesh")
 	UStaticMesh* StaticMesh;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Mesh")
 	UMaterial* MaterialAsset;
 
-	UFUNCTION(BlueprintCallable)
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Development")
+	bool bIsDebug = false;
+
+	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Debug")
 	void UpdateMesh();
 
 	UFUNCTION(BlueprintCallable)

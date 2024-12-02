@@ -20,7 +20,7 @@ protected:
 	void OnNodeHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 	
 public:
-	FHitResult LineTrace(UWorld* EngineWorld, AActor* Owner, FVector StartLocation, FVector EndLocation);
+	FHitResult LineTrace(UWorld* EngineWorld, AActor* Owner, FVector StartLocation, FVector EndLocation, bool bIsDebug);
 
 	UDeformableMeshComponent* DeformableMesh;
 	FVector Location;
