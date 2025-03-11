@@ -22,6 +22,7 @@ protected:
 public:
 	FHitResult LineTrace(UWorld* EngineWorld, AActor* Owner, FVector StartLocation, FVector EndLocation, bool bIsDebug);
 
+	int NodeId;
 	UDeformableMeshComponent* DeformableMesh;
 	FVector Location;
 	TArray<int32>* Vertices = new TArray<int32>();

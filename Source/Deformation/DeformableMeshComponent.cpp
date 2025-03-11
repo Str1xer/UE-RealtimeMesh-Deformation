@@ -1,7 +1,8 @@
 #include "DeformableMeshComponent.h"
 #include "CollisionNodeComponent.h"
 
-UDeformableMeshComponent::UDeformableMeshComponent() {
+UDeformableMeshComponent::UDeformableMeshComponent() 
+{
 	RealtimeMeshComponent = CreateDefaultSubobject<URealtimeMeshComponent>(TEXT("Mesh"));
 
 	PrimaryComponentTick.TickGroup = TG_PrePhysics;
@@ -26,9 +27,9 @@ void UDeformableMeshComponent::BeginPlay()
 	RealtimeMeshComponent->SetRelativeRotation(FQuat(0, 0, 0, 0));
 
 	PreviousComponentLocation = RealtimeMeshComponent->GetComponentLocation();
-
+	
 	InitMesh();
-	SpawnCollisionNodes();
+	GenerateCollisionModel();
 	ComputeWeights();
 }
 
@@ -84,7 +85,8 @@ void UDeformableMeshComponent::UpdateMesh()
 			FVector NewLocation = FVector(0, 0, 0);
 
 			for (int32 NodeIdx = 0; NodeIdx < CollisionNodes.Num(); NodeIdx++) {
-				auto NodePosition = CollisionNodes[NodeIdx]->GetRelativeLocation();
+				//auto NodePosition = CollisionNodes[NodeIdx]->GetRelativeLocation();
+				FVector NodePosition = this->GetComponentTransform().InverseTransformPosition(CollisionNodes[NodeIdx]->GetComponentLocation());
 
 				NewLocation += DeformationTransferWeights[VertexIdx][NodeIdx] * NodePosition;
 			}
@@ -117,19 +119,74 @@ void UDeformableMeshComponent::SpawnCollisionNode(FVector Location) {
 	if (!CreatedCollisionNode) {
 		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("New object wasn't created!")));
 	}
+
+	CreatedCollisionNode->NodeId = CollisionNodesCount;
 	CreatedCollisionNode->DeformableMesh = this;
 	bool bResult = CreatedCollisionNode->AttachToComponent(this, FAttachmentTransformRules::KeepWorldTransform);
 	CreatedCollisionNode->RegisterComponent();
 	CreatedCollisionNode->SetSphereRadius(CageNodeRadius);
 	CreatedCollisionNode->SetRelativeLocation(Location);
 	CreatedCollisionNode->Location = Location;
-	//CreatedCollisionNode->SetSimulatePhysics(true);
 	CreatedCollisionNode->SetHiddenInGame(!bIsDebug);
+
 	CollisionNodesCount++;
 	CollisionNodes.Push(CreatedCollisionNode);
 }
 
-void UDeformableMeshComponent::SpawnCollisionNodes() {
+void UDeformableMeshComponent::SpawnCollisionNodeWithPhysicsConstraint(FVector Location) {
+	UCollisionNodeComponent* CreatedCollisionNode = NewObject<UCollisionNodeComponent>(this);
+	if (!CreatedCollisionNode) {
+		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("New object wasn't created!")));
+	}
+
+	CreatedCollisionNode->NodeId = CollisionNodesCount;
+	CreatedCollisionNode->DeformableMesh = this;
+	CreatedCollisionNode->SetMassOverrideInKg(NAME_None, 25.0f);
+	CreatedCollisionNode->AttachToComponent(this, FAttachmentTransformRules::KeepWorldTransform);
+	CreatedCollisionNode->SetSphereRadius(CageNodeRadius);
+	CreatedCollisionNode->SetHiddenInGame(!bIsDebug);
+	CreatedCollisionNode->RegisterComponent();
+	CreatedCollisionNode->SetRelativeLocation(Location);
+	CreatedCollisionNode->Location = Location;
+
+	CreatedCollisionNode->SetSimulatePhysics(true);
+
+	UPhysicsConstraintComponent* ConstraintComp = NewObject<UPhysicsConstraintComponent>(this);
+	if (!CreatedCollisionNode) {
+		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Red, FString::Printf(TEXT("Constraint wasn't created!")));
+	}
+
+	ConstraintComp->AttachToComponent(this, FAttachmentTransformRules::KeepWorldTransform);
+	ConstraintComp->SetDisableCollision(true);
+	ConstraintComp->SetProjectionEnabled(false);
+
+	// Constraint Limits
+	ConstraintComp->SetLinearXLimit(ELinearConstraintMotion::LCM_Free, 0);
+	ConstraintComp->SetLinearYLimit(ELinearConstraintMotion::LCM_Free, 0);
+	ConstraintComp->SetLinearZLimit(ELinearConstraintMotion::LCM_Free, 0);
+	ConstraintComp->SetAngularSwing1Limit(EAngularConstraintMotion::ACM_Locked, 0);
+	ConstraintComp->SetAngularSwing2Limit(EAngularConstraintMotion::ACM_Locked, 0);
+	ConstraintComp->SetAngularTwistLimit(EAngularConstraintMotion::ACM_Locked, 0);
+
+	// Constraint Linear Position Force
+	ConstraintComp->SetLinearPositionTarget(FVector(0, 0, 0));
+	ConstraintComp->SetLinearPositionDrive(true, true, true);
+
+	// Constraint Linear Velocity Force
+	ConstraintComp->SetLinearVelocityTarget(FVector(0, 0, 0));
+	ConstraintComp->SetLinearVelocityDrive(true, true, true);
+	ConstraintComp->SetLinearDriveParams(25000, 2500, 0);
+
+	ConstraintComp->RegisterComponent();
+	ConstraintComp->SetWorldLocation(this->GetComponentLocation());
+	ConstraintComp->SetConstrainedComponents(this, NAME_None, CreatedCollisionNode, NAME_None);
+
+	CollisionNodesCount++;
+	CollisionNodes.Push(CreatedCollisionNode);
+	NodeConstraints.Push(ConstraintComp);
+}
+
+void UDeformableMeshComponent::GenerateCollisionModel() {
 	TArray<FVector> CageMeshVertices;
 	TArray<int32> CageMeshTriangles;
 	TArray<FVector> CageMeshNormals;
@@ -141,28 +198,42 @@ void UDeformableMeshComponent::SpawnCollisionNodes() {
 		CageVertices.AddUnique(VertexLocation);
 	}
 
-	for (FVector Location : CageVertices) {
-		SpawnCollisionNode(Location);
+	if (bUsePhysicsConstraint) {
+		for (FVector Location : CageVertices) {
+			SpawnCollisionNodeWithPhysicsConstraint(Location);
+		}
 	}
+	else {
+		for (FVector Location : CageVertices) {
+			SpawnCollisionNode(Location);
+		}
+	}
+	
 
 	for (int32 Index : CageMeshTriangles) {
 		CageTriangles.Add(CageVertices.Find(CageMeshVertices[Index]));
 	}
 }
 
-void UDeformableMeshComponent::MoveNodes(FVector NormalImpulse, const FHitResult& Hit) {
+void UDeformableMeshComponent::MoveNodes(int NodeId, FVector NormalImpulse, const FHitResult& Hit) {
 	float SharedMass = 0.0f;
 	auto EngineWorld = GetWorld();
 	
 	AActor* SelfActor = this->GetOwner()->GetRootComponent()->GetOwner();
 
-	for (UCollisionNodeComponent* CollisionNode : CollisionNodes) {
-		FHitResult TraceHit = CollisionNode->LineTrace(EngineWorld, SelfActor, CollisionNode->GetComponentLocation() + Hit.ImpactNormal * -10, CollisionNode->GetComponentLocation() + Hit.ImpactNormal * -20, bIsDebug);
-		if (TraceHit.bBlockingHit && Hit.GetComponent() == TraceHit.GetComponent()) {
-			FVector Impulse = NormalImpulse / 100 * 0.01 * ((10 - Hit.Distance) / 10);
-			if (Impulse.Length() < 1) continue;
-			CollisionNode->AddWorldOffset(Impulse);
-			CollisionNode->Location += Impulse;
+	if (bUsePhysicsConstraint) {
+		FVector NewTargetPosition = NodeConstraints[NodeId]->ConstraintInstance.GetLinearPositionTarget() + NormalImpulse / (-2500);
+		//NodeConstraints[NodeId]->ConstraintInstance.SetLinearPositionTarget(NewTargetPosition);
+	}
+	else {
+		for (UCollisionNodeComponent* CollisionNode : CollisionNodes) {
+			FHitResult TraceHit = CollisionNode->LineTrace(EngineWorld, SelfActor, CollisionNode->GetComponentLocation() + Hit.ImpactNormal * -10, CollisionNode->GetComponentLocation() + Hit.ImpactNormal * -20, bIsDebug);
+			if (TraceHit.bBlockingHit && Hit.GetComponent() == TraceHit.GetComponent()) {
+				FVector Impulse = NormalImpulse / 100 * 0.01 * ((10 - Hit.Distance) / 10);
+				if (Impulse.Length() < 1) continue;
+				CollisionNode->AddWorldOffset(Impulse);
+				CollisionNode->Location += Impulse;
+			}
 		}
 	}
 

@@ -9,6 +9,7 @@
 #include "RealtimeMeshLibrary.h"
 #include "RealtimeMeshSimple.h"
 #include "Components/SphereComponent.h"
+#include "PhysicsEngine/PhysicsConstraintComponent.h"
 #include "Mesh/RealtimeMeshBlueprintMeshBuilder.h"
 #include "DeformableMeshComponent.generated.h"
 
@@ -27,20 +28,20 @@ private:
 protected:
 	virtual void BeginPlay() override;
 	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
-
+	
 	UFUNCTION(BlueprintCallable)
 	void InitMesh();
 	
 	UDeformableMeshComponent();
 
 	void SpawnCollisionNode(FVector Location);
-	void SpawnCollisionNodes();
+	void SpawnCollisionNodeWithPhysicsConstraint(FVector Location);
+	void GenerateCollisionModel();
 	void ComputeWeights();
 	TArray<float> ComputeWeightsForVertex(FVector VertexLocation);
 
 	int CollisionNodesCount = 0;
-	TArray<UCollisionNodeComponent*> CollisionNodes;
-
+	
 	// Mesh Data
 	TArray<FVector> Vertices;
 	TArray<int32> Triangles;
@@ -69,18 +70,26 @@ public:
 	float CageNodeRadius = 10.f;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Mesh")
+	bool bUsePhysicsConstraint = false;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Mesh")
 	UStaticMesh* StaticMesh;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Mesh")
 	UMaterial* MaterialAsset;
 
-
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Development")
 	bool bIsDebug = false;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Debug")
+	TArray<UCollisionNodeComponent*> CollisionNodes;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Debug")
+	TArray<UPhysicsConstraintComponent*> NodeConstraints;
 
 	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Debug")
 	void UpdateMesh();
 
 	UFUNCTION(BlueprintCallable)
-	void MoveNodes(FVector NormalImpulse, const FHitResult& Hit);
+	void MoveNodes(int NodeId, FVector NormalImpulse, const FHitResult& Hit);
 };
