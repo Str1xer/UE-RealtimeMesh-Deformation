@@ -1,7 +1,10 @@
+// Fill out your copyright notice in the Description page of Project Settings.
+
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Components/SphereComponent.h"
+#include "PhysicsEngine/PhysicsConstraintComponent.h"
 #include "CollisionNodeComponent.generated.h"
 
 class UDeformableMeshComponent;
@@ -18,12 +21,12 @@ protected:
 	
 	UFUNCTION()
 	void OnNodeHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
-	
+
 public:
 	FHitResult LineTrace(UWorld* EngineWorld, AActor* Owner, FVector StartLocation, FVector EndLocation, bool bIsDebug);
 
 	int NodeId;
 	UDeformableMeshComponent* DeformableMesh;
-	FVector Location;
+	FVector InitLocation;
 	TArray<int32>* Vertices = new TArray<int32>();
 };

@@ -67,29 +67,38 @@ public:
 	UStaticMesh* CageMesh;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Mesh")
-	float CageNodeRadius = 10.f;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Mesh")
-	bool bUsePhysicsConstraint = false;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Mesh")
 	UStaticMesh* StaticMesh;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Mesh")
 	UMaterial* MaterialAsset;
 
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Mesh", meta = (ClampMin = "0"))
+	float CageNodeRadius = 10.f;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Mesh", meta = (ClampMin = "0"))
+	float MaxCageNodeOffsetDistance = 10.0f;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Mesh")
+	bool bUsePhysicsConstraint = false;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Mesh", meta = (EditCondition = "bUsePhysicsConstraint", ClampMin = "0"))
+	float CageNodeWeight = 25.0f;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Mesh", meta = (ClampMin = "0"))
+	float ImpulseThreshold = 1.0f;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Mesh", meta = (ClampMin = "0"))
+	float DeformationRatio = 0.5f;
+
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Development")
 	bool bIsDebug = false;
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Debug")
 	TArray<UCollisionNodeComponent*> CollisionNodes;
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Debug")
 	TArray<UPhysicsConstraintComponent*> NodeConstraints;
 
-	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Debug")
+	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Development")
 	void UpdateMesh();
 
-	UFUNCTION(BlueprintCallable)
 	void MoveNodes(int NodeId, FVector NormalImpulse, const FHitResult& Hit);
 };

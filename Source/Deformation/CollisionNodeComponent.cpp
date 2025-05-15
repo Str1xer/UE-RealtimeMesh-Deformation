@@ -5,17 +5,19 @@
 
 UCollisionNodeComponent::UCollisionNodeComponent() 
 {
-	this->bHiddenInGame = true;
 	this->SetNotifyRigidBodyCollision(true);
 	this->SetGenerateOverlapEvents(true);
-	this->SetCollisionProfileName(TEXT("DeformationNode"));
 	this->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	this->SetLinearDamping(10.f);
+	this->SetAngularDamping(100.f);
+	this->SetCollisionProfileName(TEXT("DeformationNode"));
 }
 
 void UCollisionNodeComponent::BeginPlay() 
 {
 	Super::BeginPlay();
 
+	this->SetMassOverrideInKg("", 25.0f);
 	this->OnComponentHit.AddDynamic(this, &UCollisionNodeComponent::OnNodeHit);
 }
 
