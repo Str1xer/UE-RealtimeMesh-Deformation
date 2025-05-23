@@ -179,7 +179,7 @@ void UDeformableMeshComponent::SpawnCollisionNodeWithPhysicsConstraint(FVector L
 	// Constraint Linear Velocity Force
 	ConstraintComp->SetLinearVelocityTarget(FVector(0, 0, 0));
 	ConstraintComp->SetLinearVelocityDrive(true, true, true);
-	ConstraintComp->SetLinearDriveParams(25000, 2500, 0);
+	ConstraintComp->SetLinearDriveParams(1000 * DeformationRatio, 100 * DeformationRatio, 0);
 
 	ConstraintComp->RegisterComponent();
 
@@ -225,15 +225,28 @@ void UDeformableMeshComponent::MoveNodes(int NodeId, FVector NormalImpulse, cons
 	float AngleBetween = FMath::RadiansToDegrees(FGenericPlatformMath::Acos(FVector::DotProduct(LocationsDif.GetSafeNormal(), Hit.ImpactNormal)));
 
 	if (AngleBetween < 0) return;
+	FVector Impulse = NormalImpulse / 100 * 0.01;
 
 	if (bUsePhysicsConstraint) {
 		if ((NormalImpulse / (-2500)).Length() < ImpulseThreshold) return;
-		FVector NewTargetPosition = NodeConstraints[NodeId]->ConstraintInstance.GetLinearPositionTarget() + NormalImpulse / (-2500);
-		NodeConstraints[NodeId]->ConstraintInstance.SetLinearPositionTarget(NewTargetPosition);
+		float DistanceFromInitialLocation = NodeConstraints[NodeId]->ConstraintInstance.GetLinearPositionTarget().Length();
+		float DistanceDiff = FMath::Max(0, MaxCageNodeOffsetDistance - DistanceFromInitialLocation);
+		float InitialLocationFactor = DistanceDiff * DistanceDiff / MaxCageNodeOffsetDistance / MaxCageNodeOffsetDistance;
+
+		if (bSlimeModeEnabled) {
+			FVector Offset = NodeConstraints[NodeId]->GetComponentLocation() - CollisionNodes[NodeId]->GetComponentLocation();
+			float AngleBetweenOffset = FMath::RadiansToDegrees(FGenericPlatformMath::Acos(FVector::DotProduct(LocationsDif.GetSafeNormal(), Offset.GetSafeNormal())));
+
+			if (AngleBetweenOffset < 0) return;
+			NodeConstraints[NodeId]->ConstraintInstance.SetLinearPositionTarget(Offset);
+			NodeConstraints[NodeId]->ConstraintInstance.SetLinearDriveParams((1000 + (20000 * (1 - InitialLocationFactor))) * DeformationRatio, (100 + (2000 * (1 - InitialLocationFactor))) * DeformationRatio, 0);
+		}
+		else {
+			FVector NewTargetPosition = NodeConstraints[NodeId]->ConstraintInstance.GetLinearPositionTarget() - DeformationRatio * InitialLocationFactor * Hit.ImpactNormal * Impulse.Length();
+			NodeConstraints[NodeId]->ConstraintInstance.SetLinearPositionTarget(NewTargetPosition);
+		}
 	}
 	else {
-		FVector Impulse = NormalImpulse / 100 * 0.01;
-
 		for (UCollisionNodeComponent* CollisionNode : CollisionNodes) {
 			FHitResult TraceHit = CollisionNode->LineTrace(EngineWorld, SelfActor, CollisionNode->GetComponentLocation() + Hit.ImpactNormal * -10, CollisionNode->GetComponentLocation() + Hit.ImpactNormal * -20, bIsDebug);
 			if (TraceHit.bBlockingHit && Hit.GetComponent() == TraceHit.GetComponent()) {

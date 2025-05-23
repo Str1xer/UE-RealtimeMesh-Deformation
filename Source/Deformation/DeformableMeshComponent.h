@@ -84,6 +84,10 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Mesh", meta = (EditCondition = "bUsePhysicsConstraint", ClampMin = "0"))
 	float CageNodeWeight = 25.0f;
 
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Mesh", meta = (EditCondition = "bUsePhysicsConstraint"))
+	bool bSlimeModeEnabled = false;
+
+
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Mesh", meta = (ClampMin = "0"))
 	float ImpulseThreshold = 1.0f;
 

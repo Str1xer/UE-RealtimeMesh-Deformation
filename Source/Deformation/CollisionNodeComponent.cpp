@@ -8,7 +8,7 @@ UCollisionNodeComponent::UCollisionNodeComponent()
 	this->SetNotifyRigidBodyCollision(true);
 	this->SetGenerateOverlapEvents(true);
 	this->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-	this->SetLinearDamping(10.f);
+	this->SetLinearDamping(1.f);
 	this->SetAngularDamping(100.f);
 	this->SetCollisionProfileName(TEXT("DeformationNode"));
 }
