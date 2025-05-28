@@ -59,7 +59,10 @@ protected:
 	FRealtimeMeshSectionGroupKey GroupKey;
 
 	FVector PreviousComponentLocation;
-	
+
+	TArray<UCollisionNodeComponent*> CollisionNodes;
+
+	TArray<UPhysicsConstraintComponent*> NodeConstraints;
 public: 
 	const float Epsilon = 1e-4f;
 
@@ -97,9 +100,6 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Development")
 	bool bIsDebug = false;
 
-	TArray<UCollisionNodeComponent*> CollisionNodes;
-
-	TArray<UPhysicsConstraintComponent*> NodeConstraints;
 
 	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Development")
 	void UpdateMesh();
